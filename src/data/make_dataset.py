@@ -180,7 +180,7 @@ data_resampled = pd.concat(
     [df.resample(rule="200ms").apply(sampling).dropna() for df in days]
 )
 
-data_resampled["set"] = data_resampled["set"].astype("int")
+data_resampled["set"] = data_resampled["set"].astype("int64")
 data_resampled.info()
 
 # --------------------------------------------------------------
