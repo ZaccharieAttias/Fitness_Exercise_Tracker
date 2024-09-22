@@ -1,37 +1,36 @@
-import copy
+##############################################################
+#                                                            #
+#    Mark Hoogendoorn and Burkhardt Funk (2017)              #
+#    Machine Learning for the Quantified Self                #
+#    Springer                                                #
+#    Chapter 7                                               #
+#                                                            #
+##############################################################
 
-import numpy as np
-import pandas as pd
-from sklearn import tree
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
-from sklearn.model_selection import GridSearchCV
-from sklearn.naive_bayes import GaussianNB
-from sklearn.neighbors import KNeighborsClassifier
+# Updated by Dave Ebbelaar on 12-01-2023
+
 from sklearn.neural_network import MLPClassifier
-from sklearn.svm import SVC, LinearSVC
+from sklearn.svm import SVC
+from sklearn.svm import LinearSVC
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
+from sklearn import tree
+from sklearn.naive_bayes import GaussianNB
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import accuracy_score
+import pandas as pd
+import numpy as np
+import copy
 
 
 class ClassificationAlgorithms:
-    """
-    A collection of machine learning classification algorithms with methods for
-    performing feature selection and training models. This class provides implementations 
-    for decision trees, neural networks, support vector machines, k-nearest neighbors,
-    naive bayes, and random forest classifiers, among others.
-    """
+
+    # Forward selection for classification which selects a pre-defined number of features (max_features)
+    # that show the best accuracy. We assume a decision tree learning for this purpose, but
+    # this can easily be changed. It return the best features.
     def forward_selection(self, max_features, X_train, y_train):
-        """
-        Perform forward selection to identify the best features for classification.
-
-        Parameters:
-        max_features (int): The maximum number of features to select.
-        X_train (pd.DataFrame): The training data features.
-        y_train (pd.Series): The training data labels.
-
-        Returns:
-        tuple: A tuple containing the selected features, ordered features, and their corresponding scores.
-        """
+        # Start with no features.
         ordered_features = []
         ordered_scores = []
         selected_features = []
@@ -40,21 +39,26 @@ class ClassificationAlgorithms:
 
         # Select the appropriate number of features.
         for i in range(0, max_features):
-            print(f"Selecting feature {i + 1}/{max_features}")
+            print(i)
 
             # Determine the features left to select.
             features_left = list(set(X_train.columns) - set(selected_features))
             best_perf = 0
-            best_feature = None
+            best_attribute = ""
 
             # For all features we can still select...
-            for feature in features_left:
+            for f in features_left:
                 temp_selected_features = copy.deepcopy(selected_features)
-                temp_selected_features.append(feature)
+                temp_selected_features.append(f)
 
                 # Determine the accuracy of a decision tree learner if we were to add
                 # the feature.
-                pred_y_train, _, _, _ = ca.decision_tree(
+                (
+                    pred_y_train,
+                    pred_y_test,
+                    prob_training_y,
+                    prob_test_y,
+                ) = ca.decision_tree(
                     X_train[temp_selected_features],
                     y_train,
                     X_train[temp_selected_features],
@@ -65,17 +69,18 @@ class ClassificationAlgorithms:
                 # we set the current feature to the best feature and the same for the best performance.
                 if perf > best_perf:
                     best_perf = perf
-                    best_feature = feature
-
+                    best_feature = f
             # We select the feature with the best performance.
-            if best_feature is not None:
-                selected_features.append(best_feature)
-                ordered_features.append(best_feature)
-                ordered_scores.append(best_perf)
-                prev_best_perf = best_perf
-
+            selected_features.append(best_feature)
+            prev_best_perf = best_perf
+            ordered_features.append(best_feature)
+            ordered_scores.append(best_perf)
         return selected_features, ordered_features, ordered_scores
 
+    # Apply a neural network for classification upon the training data (with the specified composition of
+    # hidden layers and number of iterations), and use the created network to predict the outcome for both the
+    # test and training set. It returns the categorical predictions for the training and test set as well as the
+    # probabilities associated with each class, each class being represented as a column in the data frame.
     def feedforward_neural_network(
         self,
         train_X,
@@ -89,24 +94,7 @@ class ClassificationAlgorithms:
         gridsearch=True,
         print_model_details=False,
     ):
-        """
-        Train and apply a feedforward neural network for classification.
 
-        Parameters:
-        train_X (pd.DataFrame): Training data features.
-        train_y (pd.Series): Training data labels.
-        test_X (pd.DataFrame): Test data features.
-        hidden_layer_sizes (tuple): Sizes of hidden layers.
-        max_iter (int): Maximum number of iterations.
-        activation (str): Activation function for the hidden layer.
-        alpha (float): L2 penalty (regularization term) parameter.
-        learning_rate (str): Learning rate schedule for weight updates.
-        gridsearch (bool): Whether to perform grid search for hyperparameter tuning.
-        print_model_details (bool): Whether to print model details after training.
-
-        Returns:
-        tuple: Predictions and probabilities for training and test sets.
-        """
         if gridsearch:
             tuned_parameters = [
                 {
@@ -115,8 +103,14 @@ class ClassificationAlgorithms:
                         (10,),
                         (25,),
                         (100,),
-                        (100, 5),
-                        (100, 10),
+                        (
+                            100,
+                            5,
+                        ),
+                        (
+                            100,
+                            10,
+                        ),
                     ],
                     "activation": [activation],
                     "learning_rate": [learning_rate],
@@ -138,7 +132,10 @@ class ClassificationAlgorithms:
             )
 
         # Fit the model
-        nn.fit(train_X, train_y.values.ravel())
+        nn.fit(
+            train_X,
+            train_y.values.ravel(),
+        )
 
         if gridsearch and print_model_details:
             print(nn.best_params_)
@@ -156,6 +153,10 @@ class ClassificationAlgorithms:
 
         return pred_training_y, pred_test_y, frame_prob_training_y, frame_prob_test_y
 
+    # Apply a support vector machine for classification upon the training data (with the specified value for
+    # C, epsilon and the kernel function), and use the created model to predict the outcome for both the
+    # test and training set. It returns the categorical predictions for the training and test set as well as the
+    # probabilities associated with each class, each class being represented as a column in the data frame.
     def support_vector_machine_with_kernel(
         self,
         train_X,
@@ -167,22 +168,6 @@ class ClassificationAlgorithms:
         gridsearch=True,
         print_model_details=False,
     ):
-        """
-        Train and apply a support vector machine (SVM) with kernel for classification.
-
-        Parameters:
-        train_X (pd.DataFrame): The training data with features.
-        train_y (pd.Series): The training labels.
-        test_X (pd.DataFrame): The test data for prediction.
-        kernel (str): The kernel function to use ('rbf' or 'poly').
-        C (float): Regularization parameter.
-        gamma (float): Kernel coefficient.
-        gridsearch (bool): Whether to use grid search for hyperparameter tuning.
-        print_model_details (bool): Whether to print model details.
-
-        Returns:
-        tuple: Predictions and probabilities for both training and test data.
-        """
         # Create the model
         if gridsearch:
             tuned_parameters = [
@@ -215,6 +200,10 @@ class ClassificationAlgorithms:
 
         return pred_training_y, pred_test_y, frame_prob_training_y, frame_prob_test_y
 
+    # Apply a support vector machine for classification upon the training data (with the specified value for
+    # C, epsilon and the kernel function), and use the created model to predict the outcome for both the
+    # test and training set. It returns the categorical predictions for the training and test set as well as the
+    # probabilities associated with each class, each class being represented as a column in the data frame.
     def support_vector_machine_without_kernel(
         self,
         train_X,
@@ -226,21 +215,6 @@ class ClassificationAlgorithms:
         gridsearch=True,
         print_model_details=False,
     ):
-        """
-        Apply a support vector machine (SVM) classifier without a kernel.
-
-        Parameters:
-        train_X (pd.DataFrame): Training data features.
-        train_y (pd.Series): Training data labels.
-        test_X (pd.DataFrame): Test data features.
-        C (float): Regularization parameter.
-        max_iter (int): Maximum number of iterations.
-        gridsearch (bool): Whether to perform grid search for hyperparameter tuning.
-        print_model_details (bool): Whether to print model details after training.
-
-        Returns:
-        tuple: Predictions and probabilities for training and test sets.
-        """
         # Create the model
         if gridsearch:
             tuned_parameters = [
@@ -276,6 +250,10 @@ class ClassificationAlgorithms:
 
         return pred_training_y, pred_test_y, frame_prob_training_y, frame_prob_test_y
 
+    # Apply a nearest neighbor approach for classification upon the training data (with the specified value for
+    # k), and use the created model to predict the outcome for both the
+    # test and training set. It returns the categorical predictions for the training and test set as well as the
+    # probabilities associated with each class, each class being represented as a column in the data frame.
     def k_nearest_neighbor(
         self,
         train_X,
@@ -285,21 +263,6 @@ class ClassificationAlgorithms:
         gridsearch=True,
         print_model_details=False,
     ):
-        """
-        Apply a k-nearest neighbor classifier.
-
-        Parameters:
-        train_X (pd.DataFrame): Training data features.
-        train_y (pd.Series): Training data labels.
-        test_X (pd.DataFrame): Test data features.
-        n_neighbors (int): Number of neighbors to use.
-        weights (str): Weight function used in prediction ("uniform" or "distance").
-        gridsearch (bool): Whether to perform grid search for hyperparameter tuning.
-        print_model_details (bool): Whether to print model details after training.
-
-        Returns:
-        tuple: Predictions and probabilities for training and test sets.
-        """
         # Create the model
         if gridsearch:
             tuned_parameters = [{"n_neighbors": [1, 2, 5, 10]}]
@@ -328,6 +291,11 @@ class ClassificationAlgorithms:
 
         return pred_training_y, pred_test_y, frame_prob_training_y, frame_prob_test_y
 
+    # Apply a decision tree approach for classification upon the training data (with the specified value for
+    # the minimum samples in the leaf, and the export path and files if print_model_details=True)
+    # and use the created model to predict the outcome for both the
+    # test and training set. It returns the categorical predictions for the training and test set as well as the
+    # probabilities associated with each class, each class being represented as a column in the data frame.
     def decision_tree(
         self,
         train_X,
@@ -340,22 +308,6 @@ class ClassificationAlgorithms:
         export_tree_name="tree.dot",
         gridsearch=True,
     ):
-        """
-        Apply a decision tree classifier.
-
-        Parameters:
-        train_X (pd.DataFrame): Training data features.
-        train_y (pd.Series): Training data labels.
-        test_X (pd.DataFrame): Test data features.
-        criterion (str): The function to measure the quality of a split ("gini" or "entropy").
-        max_depth (int or None): The maximum depth of the tree.
-        min_samples_split (int): The minimum number of samples required to split an internal node.
-        gridsearch (bool): Whether to perform grid search for hyperparameter tuning.
-        print_model_details (bool): Whether to print model details after training.
-
-        Returns:
-        tuple: Predictions and probabilities for training and test sets.
-        """
         # Create the model
         if gridsearch:
             tuned_parameters = [
@@ -419,21 +371,11 @@ class ClassificationAlgorithms:
 
         return pred_training_y, pred_test_y, frame_prob_training_y, frame_prob_test_y
 
+    # Apply a naive bayes approach for classification upon the training data
+    # and use the created model to predict the outcome for both the
+    # test and training set. It returns the categorical predictions for the training and test set as well as the
+    # probabilities associated with each class, each class being represented as a column in the data frame.
     def naive_bayes(self, train_X, train_y, test_X):
-        """
-        Apply a naive bayes classifier.
-
-        Parameters:
-        train_X (pd.DataFrame): Training data features.
-        train_y (pd.Series): Training data labels.
-        test_X (pd.DataFrame): Test data features.
-        var_smoothing (float): Portion of the largest variance of all features added to variances for stability.
-        gridsearch (bool): Whether to perform grid search for hyperparameter tuning.
-        print_model_details (bool): Whether to print model details after training.
-
-        Returns:
-        tuple: Predictions and probabilities for training and test sets.
-        """
         # Create the model
         nb = GaussianNB()
 
@@ -450,6 +392,11 @@ class ClassificationAlgorithms:
 
         return pred_training_y, pred_test_y, frame_prob_training_y, frame_prob_test_y
 
+    # Apply a random forest approach for classification upon the training data (with the specified value for
+    # the minimum samples in the leaf, the number of trees, and if we should print some of the details of the
+    # model print_model_details=True) and use the created model to predict the outcome for both the
+    # test and training set. It returns the categorical predictions for the training and test set as well as the
+    # probabilities associated with each class, each class being represented as a column in the data frame.
     def random_forest(
         self,
         train_X,
@@ -461,22 +408,7 @@ class ClassificationAlgorithms:
         print_model_details=False,
         gridsearch=True,
     ):
-        """
-        Apply a random forest classifier for classification.
 
-        Parameters:
-        train_X (pd.DataFrame): Training data features.
-        train_y (pd.Series): Training data labels.
-        test_X (pd.DataFrame): Test data features.
-        n_estimators (int): The number of trees in the forest.
-        min_samples_leaf (int): The minimum number of samples required to be at a leaf node.
-        criterion (str): The function to measure the quality of a split (either "gini" or "entropy").
-        print_model_details (bool): Whether to print model details after training.
-        gridsearch (bool): Whether to perform grid search for hyperparameter tuning.
-
-        Returns:
-        tuple: Predictions and probabilities for training and test sets.
-        """
         if gridsearch:
             tuned_parameters = [
                 {

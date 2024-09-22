@@ -1,117 +1,67 @@
-import pandas as pd
+import os
 from glob import glob
 
-# --------------------------------------------------------------
-# Read single CSV file
-# --------------------------------------------------------------
-
-single_file_acc = pd.read_csv(
-    "../../data/raw/MetaMotion/A-bench-heavy2-rpe8_MetaWear_2019-01-11T16.10.08.270_C42732BE255C_Accelerometer_12.500Hz_1.4.4.csv"
-)
-
-single_file_gyr = pd.read_csv(
-    "../../data/raw/MetaMotion/A-bench-heavy2-rpe8_MetaWear_2019-01-11T16.10.08.270_C42732BE255C_Accelerometer_12.500Hz_1.4.4.csv"
-)
+import pandas as pd
 
 # --------------------------------------------------------------
-# List all data in data/raw/MetaMotion
+# Constants
 # --------------------------------------------------------------
 
-files = glob("../../data/raw/MetaMotion/*.csv")
+
+DATA_PATH = "../../data/raw/MetaMotion/"
+OUTPUT_PATH = "../../data/interim/01_data_processed.pkl"
+ACCELEROMETER_KEYWORD = "Accelerometer"
+GYROSCOPE_KEYWORD = "Gyroscope"
 
 # --------------------------------------------------------------
-# Extract features from filename
+# Functions
 # --------------------------------------------------------------
 
-data_path = "../../data/raw/MetaMotion\\"
-f = files[0]
 
-participant = f.split("-")[0].replace(data_path, "")
-label = f.split("-")[1]
-category = f.split("-")[2].rstrip("123")
+def extract_features_from_filename(filename):
+    """
+    Extract participant, label, and category from the filename.
 
-df = pd.read_csv(f)
-df["participant"] = participant
-df["label"] = label
-df["category"] = category
+    Args:
+        filename (str): The path to the file.
 
-# --------------------------------------------------------------
-# Read all files
-# --------------------------------------------------------------
-
-acc_df = pd.DataFrame()
-gyr_df = pd.DataFrame()
-
-acc_set = 1
-gyr_set = 1
-
-for f in files:
-    participant = f.split("-")[0].replace(data_path, "")
-    label = f.split("-")[1]
-    category = f.split("-")[2].rstrip("123").rstrip("_MetaWear_2019")
-
-    df = pd.read_csv(f)
-    df["participant"] = participant
-    df["label"] = label
-    df["category"] = category
-
-    if "Accelerometer" in f:
-        df["set"] = acc_set
-        acc_set += 1
-        acc_df = pd.concat([acc_df, df])
-    elif "Gyroscope" in f:
-        df["set"] = gyr_set
-        gyr_set += 1
-        gyr_df = pd.concat([gyr_df, df])
-
-# --------------------------------------------------------------
-# Working with datetimes
-# --------------------------------------------------------------
-
-acc_df.info()
-gyr_df.info()
-
-acc_df.index = pd.to_datetime(acc_df["epoch (ms)"], unit="ms")
-gyr_df.index = pd.to_datetime(gyr_df["epoch (ms)"], unit="ms")
-
-del acc_df["epoch (ms)"]
-del acc_df["time (01:00)"]
-del acc_df["elapsed (s)"]
-
-del gyr_df["epoch (ms)"]
-del gyr_df["time (01:00)"]
-del gyr_df["elapsed (s)"]
+    Returns:
+        tuple: participant, label, category
+    """
+    base_filename = os.path.basename(filename)
+    participant = base_filename.split("-")[0]
+    label = base_filename.split("-")[1]
+    category = base_filename.split("-")[2].rstrip("123").rstrip("_MetaWear_2019")
+    return participant, label, category
 
 
-# --------------------------------------------------------------
-# Turn into function
-# --------------------------------------------------------------
+def read_data_from_files(files):
+    """
+    Read and process data from a list of files.
 
-files = glob("../../data/raw/MetaMotion/*.csv")
+    Args:
+        files (list): List of file paths.
 
-
-def read_data_from_files(filename):
+    Returns:
+        tuple: DataFrames for accelerometer and gyroscope data.
+    """
     acc_df = pd.DataFrame()
     gyr_df = pd.DataFrame()
-
     acc_set = 1
     gyr_set = 1
 
-    for f in files:
-        participant = f.split("-")[0].replace(data_path, "")
-        label = f.split("-")[1]
-        category = f.split("-")[2].rstrip("123").rstrip("_MetaWear_2019")
-
-        df = pd.read_csv(f)
+    for file in files:
+        participant, label, category = extract_features_from_filename(file)
+        df = pd.read_csv(file)
         df["participant"] = participant
         df["label"] = label
         df["category"] = category
 
-        if "Accelerometer" in f:
+        if ACCELEROMETER_KEYWORD in file:
             df["set"] = acc_set
             acc_set += 1
             acc_df = pd.concat([acc_df, df])
-        elif "Gyroscope" in f:
+        elif GYROSCOPE_KEYWORD in file:
             df["set"] = gyr_set
             gyr_set += 1
             gyr_df = pd.concat([gyr_df, df])
@@ -119,72 +69,86 @@ def read_data_from_files(filename):
     acc_df.index = pd.to_datetime(acc_df["epoch (ms)"], unit="ms")
     gyr_df.index = pd.to_datetime(gyr_df["epoch (ms)"], unit="ms")
 
-    del acc_df["epoch (ms)"]
-    del acc_df["time (01:00)"]
-    del acc_df["elapsed (s)"]
-
-    del gyr_df["epoch (ms)"]
-    del gyr_df["time (01:00)"]
-    del gyr_df["elapsed (s)"]
+    acc_df.drop(columns=["epoch (ms)", "time (01:00)", "elapsed (s)"], inplace=True)
+    gyr_df.drop(columns=["epoch (ms)", "time (01:00)", "elapsed (s)"], inplace=True)
 
     return acc_df, gyr_df
 
 
-acc_df, gyr_df = read_data_from_files(files)
+def merge_datasets(acc_df, gyr_df):
+    """
+    Merge accelerometer and gyroscope datasets.
+
+    Args:
+        acc_df (DataFrame): Accelerometer data.
+        gyr_df (DataFrame): Gyroscope data.
+
+    Returns:
+        DataFrame: Merged dataset.
+    """
+    data_merged = pd.concat([acc_df.iloc[:, :3], gyr_df], axis=1)
+
+    # Rename columns for clarity
+    data_merged.columns = [
+        "acc_x",
+        "acc_y",
+        "acc_z",
+        "gyr_x",
+        "gyr_y",
+        "gyr_z",
+        "participant",
+        "label",
+        "category",
+        "set",
+    ]
+    return data_merged
 
 
-# --------------------------------------------------------------
-# Merging datasets
-# --------------------------------------------------------------
+def resample_data(data_merged):
+    """
+    Resample the merged dataset to a specified frequency.
+    Our actual sampling frequencies are:
+        Accelerometer:    12.500HZ
+        Gyroscope:        25.000Hz
 
-data_merged = pd.concat([acc_df.iloc[:, :3], gyr_df], axis=1)
+    Args:
+        data_merged (DataFrame): Merged dataset.
 
-data_merged.columns = [
-    "acc_x",
-    "acc_y",
-    "acc_z",
-    "gyr_x",
-    "gyr_y",
-    "gyr_z",
-    "participant",
-    "label",
-    "category",
-    "set",
-]
+    Returns:
+        DataFrame: Resampled dataset.
+    """
+    sampling = {
+        "acc_x": "mean",
+        "acc_y": "mean",
+        "acc_z": "mean",
+        "gyr_x": "mean",
+        "gyr_y": "mean",
+        "gyr_z": "mean",
+        "participant": "last",
+        "label": "last",
+        "category": "last",
+        "set": "last",
+    }
 
-# --------------------------------------------------------------
-# Resample data (frequency conversion)
-# --------------------------------------------------------------
+    days = [group for _, group in data_merged.groupby(pd.Grouper(freq="D"))]
+    data_resampled = pd.concat(
+        [df.resample(rule="200ms").apply(sampling).dropna() for df in days]
+    )
+    data_resampled["set"] = data_resampled["set"].astype("int64")
+    return data_resampled
 
-# Accelerometer:    12.500HZ
-# Gyroscope:        25.000Hz
 
-sampling = {
-    "acc_x": "mean",
-    "acc_y": "mean",
-    "acc_z": "mean",
-    "gyr_x": "mean",
-    "gyr_y": "mean",
-    "gyr_z": "mean",
-    "participant": "last",
-    "label": "last",
-    "category": "last",
-    "set": "last",
-}
+def main():
+    """
+    Main function to read, process, merge, resample, and export the dataset.
+    """
+    files = glob(os.path.join(DATA_PATH, "*.csv"))
+    acc_df, gyr_df = read_data_from_files(files)
+    data_merged = merge_datasets(acc_df, gyr_df)
+    data_resampled = resample_data(data_merged)
+    data_resampled.to_pickle(OUTPUT_PATH)
+    print("Data processing complete. Output saved to:", OUTPUT_PATH)
 
-data_merged[:1000].resample(rule="200ms").apply(sampling)
 
-# Split by day
-days = [g for n, g in data_merged.groupby(pd.Grouper(freq="D"))]
-data_resampled = pd.concat(
-    [df.resample(rule="200ms").apply(sampling).dropna() for df in days]
-)
-
-data_resampled["set"] = data_resampled["set"].astype("int64")
-data_resampled.info()
-
-# --------------------------------------------------------------
-# Export dataset
-# --------------------------------------------------------------
-
-data_resampled.to_pickle("../../data/interim/01_data_processed.pkl")
+if __name__ == "__main__":
+    main()

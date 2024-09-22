@@ -7,240 +7,326 @@ from sklearn.cluster import KMeans
 from TemporalAbstraction import NumericalAbstraction
 
 # --------------------------------------------------------------
-# Load data
+# Constants
 # --------------------------------------------------------------
-
-df = pd.read_pickle("../../data/interim/02_outliers_removed_chauvenet.pkl")
-
-predictor_columns = list(df.columns[:6])
-
-# Plot settings
-plt.style.use("fivethirtyeight")
-plt.rcParams["figure.figsize"] = (20, 5)
-plt.rcParams["figure.dpi"] = 100
-plt.rcParams["lines.linewidth"] = 2
+DATA_PATH = "../../data/interim/02_outliers_removed_chauvenet.pkl"
+OUTPUT_PATH = "../../data/interim/03_data_features.pkl"
+PREDICTOR_COLUMNS = ["acc_x", "acc_y", "acc_z", "gyr_x", "gyr_y", "gyr_z"]
 
 # --------------------------------------------------------------
-# Dealing with missing values (imputation)
+# Functions
 # --------------------------------------------------------------
 
-for col in predictor_columns:
-    df[col] = df[col].interpolate()
 
-df.info()
+def load_data(path):
+    """Load data from a pickle file.
 
-# --------------------------------------------------------------
-# Explicating and calculating set duration
-# --------------------------------------------------------------
+    Args:
+        path (str): The path to the pickle file.
 
-duration = df[df["set"] == 1].index[-1] - df[df["set"] == 1].index[0]
-duration.seconds
-
-for set in df["set"].unique():
-    start = df[df["set"] == set].index[0]
-    end = df[df["set"] == set].index[-1]
-
-    duration = end - start
-    df.loc[(df["set"] == set), "duration"] = duration.seconds
-
-duration_df = df.groupby(["category"])["duration"].mean()
-
-duration_df.iloc[0] / 5
-duration_df.iloc[1] / 10
-
-# --------------------------------------------------------------
-# Butterworth lowpass filter
-# --------------------------------------------------------------
-
-df_lowpass = df.copy()
-LowPass = LowPassFilter()
-
-fs = 1000 / 200
-cutoff = 1.3
-
-# Searching the best cutoff frequency
-df_lowpass = LowPass.low_pass_filter(df_lowpass, "acc_y", fs, cutoff, order=5)
-
-subset = df_lowpass[df_lowpass["set"] == 45]
-
-fig, ax = plt.subplots(nrows=2, sharex=True, figsize=(20, 10))
-ax[0].plot(subset["acc_y"].reset_index(drop=True), label="raw data")
-ax[1].plot(subset["acc_y_lowpass"].reset_index(drop=True), label="butterworth filter")
-ax[0].legend(loc="upper center", bbox_to_anchor=(0.5, 1.15), fancybox=True, shadow=True)
-ax[1].legend(loc="upper center", bbox_to_anchor=(0.5, 1.15), fancybox=True, shadow=True)
-
-for col in predictor_columns:
-    df_lowpass = LowPass.low_pass_filter(df_lowpass, col, fs, cutoff, order=5)
-    df_lowpass[col] = df_lowpass[col + "_lowpass"]
-    del df_lowpass[col + "_lowpass"]
-
-# --------------------------------------------------------------
-# Principal component analysis PCA
-# --------------------------------------------------------------
-
-df_pca = df_lowpass.copy()
-PCA = PrincipalComponentAnalysis()
-
-# Searching the best number of components
-pc_values = PCA.determine_pc_explained_variance(df_pca, predictor_columns)
-
-plt.figure(figsize=(10, 10))
-plt.plot(range(1, len(predictor_columns) + 1), pc_values)
-plt.xlabel("PCA numbers")
-plt.ylabel("Explained Variance")
-plt.show()
+    Returns:
+        pd.DataFrame: The loaded data as a pandas DataFrame.
+    """
+    return pd.read_pickle(path)
 
 
-df_pca = PCA.apply_pca(df_pca, predictor_columns, 3)
+def impute_missing_values(df, columns):
+    """Impute missing values using interpolation.
 
-# --------------------------------------------------------------
-# Sum of squares attributes
-# --------------------------------------------------------------
+    Args:
+        df (pd.DataFrame): The input data frame.
+        columns (list): List of columns to impute missing values for.
 
-df_squares = df_pca.copy()
-
-acc_r = df_squares["acc_x"] ** 2 + df_squares["acc_y"] ** 2 + df_squares["acc_z"] ** 2
-gyr_r = df_squares["gyr_x"] ** 2 + df_squares["gyr_y"] ** 2 + df_squares["gyr_z"] ** 2
-
-df_squares["acc_r"] = np.sqrt(acc_r)
-df_squares["gyr_r"] = np.sqrt(gyr_r)
-
-# Visualize results
-subset = df_squares[df_squares["set"] == 45]
-subset[["acc_r", "gyr_r"]].plot(subplots=True, figsize=(20, 10))
-
-# --------------------------------------------------------------
-# Temporal abstraction
-# --------------------------------------------------------------
-
-df_temporal = df_squares.copy()
-NumAbs = NumericalAbstraction()
-
-predictor_columns = predictor_columns + ["acc_r", "gyr_r"]
-
-window_size = int(1000 / 200)
+    Returns:
+        pd.DataFrame: The data frame with imputed values.
+    """
+    for col in columns:
+        df[col] = df[col].interpolate()
+    return df
 
 
-# Test
-for col in predictor_columns:
-    df_temporal = NumAbs.abstract_numerical(df_temporal, [col], window_size, "mean")
-    df_temporal = NumAbs.abstract_numerical(df_temporal, [col], window_size, "std")
+def calculate_set_duration(df):
+    """Calculate the duration of each set and add it as a new column.
+
+    Args:
+        df (pd.DataFrame): The input data frame.
+
+    Returns:
+        pd.DataFrame: The data frame with the duration of each set added as a new column.
+    """
+    for set_id in df["set"].unique():
+        start = df[df["set"] == set_id].index[0]
+        end = df[df["set"] == set_id].index[-1]
+        duration = (end - start).seconds
+        df.loc[df["set"] == set_id, "duration"] = duration
+    return df
 
 
-df_temporal_list = []
-for set in df_temporal["set"].unique():
-    subset = df_temporal[df_temporal["set"] == set].copy()
-    for col in predictor_columns:
-        subset = NumAbs.abstract_numerical(subset, [col], window_size, "mean")
-        subset = NumAbs.abstract_numerical(subset, [col], window_size, "std")
-    df_temporal_list.append(subset)
+def apply_lowpass_filter(df, columns, fs, cutoff, order=5):
+    """Apply a Butterworth lowpass filter to the specified columns.
 
-df_temporal = pd.concat(df_temporal_list)
+    Args:
+        df (pd.DataFrame): The input data frame.
+        columns (list): List of columns to apply the filter to.
+        fs (float): The sampling frequency.
+        cutoff (float): The cutoff frequency.
+        order (int, optional): The order of the filter. Defaults to 5.
 
-# Visualize results
-subset[["acc_y", "acc_y_temp_mean_ws_5", "acc_y_temp_std_ws_5"]].plot()
-subset[["gyr_y", "gyr_y_temp_mean_ws_5", "gyr_y_temp_std_ws_5"]].plot()
+    Returns:
+        pd.DataFrame: The data frame with the filtered columns.
+    """
 
-# --------------------------------------------------------------
-# Frequency features
-# --------------------------------------------------------------
+    # Searching the best cutoff frequency
 
-df_freq = df_temporal.copy().reset_index()
-FreqAbs = FourierTransformation()
+    # lpf = LowPassFilter()
+    # df_lowpass = lpf.low_pass_filter(df_lowpass, "acc_y", fs, cutoff, order=5)
 
-fs = int(1000 / 200)
-window_size = int(2800 / 200)
+    # subset = df_lowpass[df_lowpass["set"] == 45]
 
-# Visualize results
-df_freq = FreqAbs.abstract_frequency(df_freq, ["acc_y"], window_size, fs)
+    # fig, ax = plt.subplots(nrows=2, sharex=True, figsize=(20, 10))
+    # ax[0].plot(subset["acc_y"].reset_index(drop=True), label="raw data")
+    # ax[1].plot(subset["acc_y_lowpass"].reset_index(drop=True), label="butterworth filter")
+    # ax[0].legend(loc="upper center", bbox_to_anchor=(0.5, 1.15), fancybox=True, shadow=True)
+    # ax[1].legend(loc="upper center", bbox_to_anchor=(0.5, 1.15), fancybox=True, shadow=True)
 
-subset = df_freq[df_freq["set"] == 15]
-subset[["acc_y"]].plot()
-subset[
-    [
-        "acc_y_max_freq",
-        "acc_y_freq_weighted",
-        "acc_y_pse",
-        "acc_y_freq_1.429_Hz_ws_14",
-        "acc_y_freq_2.5_Hz_ws_14",
-    ]
-].plot()
+    lpf = LowPassFilter()
+    for col in columns:
+        df = lpf.low_pass_filter(df, col, fs, cutoff, order)
+        df[col] = df[col + "_lowpass"]
+        del df[col + "_lowpass"]
+    return df
 
 
-df_freq_list = []
-for set in df_freq["set"].unique():
-    print("Processing set: ", set)
-    subset = df_freq[df_freq["set"] == set].reset_index(drop=True).copy()
-    subset = FreqAbs.abstract_frequency(subset, predictor_columns, window_size, fs)
-    df_freq_list.append(subset)
+def apply_pca(df, columns, n_components):
+    """Apply Principal Component Analysis (PCA) to the specified columns.
 
-df_freq = pd.concat(df_freq_list).set_index("epoch (ms)", drop=True)
+    Args:
+        df (pd.DataFrame): The input data frame.
+        columns (list): List of columns to apply PCA to.
+        n_components (int): The number of principal components to retain.
 
-# --------------------------------------------------------------
-# Dealing with overlapping windows
-# --------------------------------------------------------------
+    Returns:
+        pd.DataFrame: The data frame with the PCA components added as new columns.
+    """
 
-df_freq = df_freq.dropna()
-df_freq = df_freq.iloc[::2]
+    # Searching the best number of components
 
-# --------------------------------------------------------------
-# Clustering
-# --------------------------------------------------------------
+    # pca = PrincipalComponentAnalysis()
+    # pc_values = pca.determine_pc_explained_variance(df, columns)
 
-df_cluster = df_freq.copy()
+    # plt.figure(figsize=(10, 10))
+    # plt.plot(range(1, len(columns) + 1), pc_values)
+    # plt.xlabel("PCA numbers")
+    # plt.ylabel("Explained Variance")
+    # plt.show()
 
-cluster_columns = ["acc_x", "acc_y", "acc_z"]
-
-# Searching the best number of clusters
-k_values = range(2, 10)
-inertias = []
-
-for k in k_values:
-    subset = df_cluster[cluster_columns]
-    kmeans = KMeans(n_clusters=k, n_init=20, random_state=0)
-    cluster_labels = kmeans.fit_predict(subset)
-    inertias.append(kmeans.inertia_)
-
-# Visualize results
-plt.figure(figsize=(10, 10))
-plt.plot(k_values, inertias)
-plt.xlabel("k")
-plt.ylabel("Sum of Squared distance")
-plt.show()
+    pca = PrincipalComponentAnalysis()
+    df = pca.apply_pca(df, columns, n_components)
+    return df
 
 
-kmeans = KMeans(n_clusters=5, n_init=20, random_state=0)
-subset = df_cluster[cluster_columns]
-df_cluster["cluster"] = kmeans.fit_predict(subset)
+def calculate_sum_of_squares(df):
+    """Calculate the sum of squares for accelerometer and gyroscope data.
 
-# Comparing clusters and labels
-# Plotting the clusters
-fig = plt.figure(figsize=(15, 15))
-ax = fig.add_subplot(projection="3d")
-for cluster in df_cluster["cluster"].unique():
-    subset = df_cluster[df_cluster["cluster"] == cluster]
-    ax.scatter(subset["acc_x"], subset["acc_y"], subset["acc_z"], label=cluster)
-ax.set_xlabel("acc_x")
-ax.set_ylabel("acc_y")
-ax.set_zlabel("acc_z")
-plt.legend()
-plt.show()
+    Args:
+        df (pd.DataFrame): The input data frame.
 
-# Plotting the labels
-fig = plt.figure(figsize=(15, 15))
-ax = fig.add_subplot(projection="3d")
-for label in df_cluster["label"].unique():
-    subset = df_cluster[df_cluster["label"] == label]
-    ax.scatter(subset["acc_x"], subset["acc_y"], subset["acc_z"], label=label)
-ax.set_xlabel("X-axis")
-ax.set_ylabel("Y-axis")
-ax.set_zlabel("Z-axis")
-plt.legend()
-plt.show()
+    Returns:
+        pd.DataFrame: The data frame with the sum of squares added as new columns.
+    """
+    df["acc_r"] = np.sqrt(df["acc_x"] ** 2 + df["acc_y"] ** 2 + df["acc_z"] ** 2)
+    df["gyr_r"] = np.sqrt(df["gyr_x"] ** 2 + df["gyr_y"] ** 2 + df["gyr_z"] ** 2)
+
+    # Visualize results
+    # subset = df[df["set"] == 45]
+    # subset[["acc_r", "gyr_r"]].plot(subplots=True, figsize=(20, 10))
+    return df
 
 
-# --------------------------------------------------------------
-# Export dataset
-# --------------------------------------------------------------
+def apply_temporal_abstraction(df, columns, window_size):
+    """Apply temporal abstraction to the specified columns.
 
-df_cluster.to_pickle("../../data/interim/03_data_features.pkl")
+    Args:
+        df (pd.DataFrame): The input data frame.
+        columns (list): List of columns to apply temporal abstraction to.
+        window_size (int): The window size for the abstraction.
+
+    Returns:
+        pd.DataFrame: The data frame with the temporal abstraction added as new columns.
+    """
+    num_abs = NumericalAbstraction()
+    for col in columns:
+        df = num_abs.abstract_numerical(df, [col], window_size, "mean")
+        df = num_abs.abstract_numerical(df, [col], window_size, "std")
+    return df
+
+
+def apply_frequency_abstraction(df, columns, window_size, fs):
+    """Apply frequency abstraction to the specified columns.
+
+    Args:
+        df (pd.DataFrame): The input data frame.
+        columns (list): List of columns to apply frequency abstraction to.
+        window_size (int): The window size for the abstraction.
+        fs (float): The sampling frequency.
+
+    Returns:
+        pd.DataFrame: The data frame with the frequency abstraction added as new columns.
+    """
+    df = df.reset_index()
+    freq_abs = FourierTransformation()
+    df_freq_list = []
+    for set in df["set"].unique():
+        print("Processing set: ", set)
+        subset = df[df["set"] == set].reset_index(drop=True).copy()
+        subset = freq_abs.abstract_frequency(subset, columns, window_size, fs)
+        df_freq_list.append(subset)
+
+    df = pd.concat(df_freq_list).set_index("epoch (ms)", drop=True)
+
+    return df
+
+
+def perform_clustering(df, columns, n_clusters):
+    """Perform KMeans clustering on the specified columns.
+
+    Args:
+        df (pd.DataFrame): The input data frame.
+        columns (list): List of columns to use for clustering.
+        n_clusters (int): The number of clusters.
+
+    Returns:
+        pd.DataFrame: The data frame with the cluster labels added as a new column.
+    """
+    kmeans = KMeans(n_clusters=n_clusters, n_init=20, random_state=0)
+    df["cluster"] = kmeans.fit_predict(df[columns])
+    return df
+
+
+def visualize_clusters(df, columns):
+    """Visualize the clusters in a 3D scatter plot.
+
+    Args:
+        df (pd.DataFrame): The input data frame.
+        columns (list): List of columns to use for visualization.
+    """
+
+    # Searching the best number of clusters
+    # k_values = range(2, 10)
+    # inertias = []
+
+    # for k in k_values:
+    #     subset = df[columns]
+    #     kmeans = KMeans(n_clusters=k, n_init=20, random_state=0)
+    #     cluster_labels = kmeans.fit_predict(subset)
+    #     inertias.append(kmeans.inertia_)
+
+    # # Visualize results
+    # plt.figure(figsize=(10, 10))
+    # plt.plot(k_values, inertias)
+    # plt.xlabel("k")
+    # plt.ylabel("Sum of Squared distance")
+    # plt.show()
+
+    fig = plt.figure(figsize=(15, 15))
+    ax = fig.add_subplot(projection="3d")
+    for cluster in df["cluster"].unique():
+        subset = df[df["cluster"] == cluster]
+        ax.scatter(
+            subset[columns[0]], subset[columns[1]], subset[columns[2]], label=cluster
+        )
+    ax.set_xlabel(columns[0])
+    ax.set_ylabel(columns[1])
+    ax.set_zlabel(columns[2])
+    plt.legend()
+    plt.show()
+
+
+def visualize_labels(df, columns):
+    """Visualize the labels in a 3D scatter plot.
+
+    Args:
+        df (pd.DataFrame): The input data frame.
+        columns (list): List of columns to use for visualization.
+    """
+    fig = plt.figure(figsize=(15, 15))
+    ax = fig.add_subplot(projection="3d")
+    for label in df["label"].unique():
+        subset = df[df["label"] == label]
+        ax.scatter(
+            subset[columns[0]], subset[columns[1]], subset[columns[2]], label=label
+        )
+    ax.set_xlabel(columns[0])
+    ax.set_ylabel(columns[1])
+    ax.set_zlabel(columns[2])
+    plt.legend()
+    plt.show()
+
+
+def main():
+    """Main function to build features from the dataset.
+
+    This function orchestrates the entire feature engineering process, including:
+    - Loading the data
+    - Imputing missing values
+    - Calculating set duration
+    - Applying a lowpass filter
+    - Applying PCA
+    - Calculating the sum of squares
+    - Applying temporal abstraction
+    - Applying frequency abstraction
+    - Performing clustering
+    - Visualizing clusters and labels
+    - Exporting the final dataset
+    """
+    # Load data
+    df = load_data(DATA_PATH)
+
+    # Impute missing values
+    df = impute_missing_values(df, PREDICTOR_COLUMNS)
+
+    # Calculate set duration
+    # df = calculate_set_duration(df)
+
+    # Apply lowpass filter
+    fs = 1000 / 200
+    cutoff = 1.3
+    df = apply_lowpass_filter(df, PREDICTOR_COLUMNS, fs, cutoff)
+
+    # Apply PCA
+    df = apply_pca(df, PREDICTOR_COLUMNS, n_components=3)
+
+    # Calculate sum of squares
+    df = calculate_sum_of_squares(df)
+
+    # Apply temporal abstraction
+    window_size = int(1000 / 200)
+    df = apply_temporal_abstraction(
+        df, PREDICTOR_COLUMNS + ["acc_r", "gyr_r"], window_size
+    )
+
+    # Apply frequency abstraction
+    window_size = int(2800 / 200)
+    df = apply_frequency_abstraction(
+        df, PREDICTOR_COLUMNS + ["acc_r", "gyr_r"], window_size, fs
+    )
+
+    # Dealing with overlapping windows
+    df = df.dropna()
+
+    # Perform clustering
+    df = perform_clustering(df, ["acc_x", "acc_y", "acc_z"], n_clusters=5)
+
+    # Visualize clusters
+    visualize_clusters(df, ["acc_x", "acc_y", "acc_z"])
+
+    # Visualize labels
+    visualize_labels(df, ["acc_x", "acc_y", "acc_z"])
+
+    # Export dataset
+    df.to_pickle(OUTPUT_PATH)
+    print(f"Data with features saved to {OUTPUT_PATH}")
+
+
+if __name__ == "__main__":
+    main()

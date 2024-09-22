@@ -1,32 +1,40 @@
-##############################################################
-#                                                            #
-#    Mark Hoogendoorn and Burkhardt Funk (2017)              #
-#    Machine Learning for the Quantified Self                #
-#    Springer                                                #
-#    Chapter 4                                               #
-#                                                            #
-##############################################################
-
-# Updated by Dave Ebbelaar on 06-01-2023
-
 import numpy as np
+import pandas as pd
 
 
-# This class performs a Fourier transformation on the data to find frequencies that occur
-# often and filter noise.
 class FourierTransformation:
+    """
+    Class to perform a Fourier transformation on the data to find frequencies that occur
+    often and filter noise.
+    """
 
-    # Find the amplitudes of the different frequencies using a fast fourier transformation. Here,
-    # the sampling rate expresses the number of samples per second (i.e. Frequency is Hertz of the dataset).
     def find_fft_transformation(self, data, sampling_rate):
-        # Create the transformation, this includes the amplitudes of both the real
-        # and imaginary part.
+        """
+        Find the amplitudes of the different frequencies using a fast Fourier transformation.
+
+        Args:
+            data (pd.Series): The input data series.
+            sampling_rate (int): The number of samples per second (i.e., Frequency in Hertz of the dataset).
+
+        Returns:
+            tuple: Real and imaginary parts of the Fourier transformation.
+        """
         transformation = np.fft.rfft(data, len(data))
         return transformation.real, transformation.imag
 
-    # Get frequencies over a certain window.
     def abstract_frequency(self, data_table, cols, window_size, sampling_rate):
+        """
+        Abstract frequency features from the data table.
 
+        Args:
+            data_table (pd.DataFrame): The input data table.
+            cols (list): List of columns to abstract.
+            window_size (int): The number of time points from the past considered.
+            sampling_rate (int): The number of samples per second.
+
+        Returns:
+            pd.DataFrame: The data table with new columns for the frequency data.
+        """
         # Create new columns for the frequency data.
         freqs = np.round((np.fft.rfftfreq(int(window_size)) * sampling_rate), 3)
 
@@ -54,16 +62,37 @@ class FourierTransformation:
                     data_table.loc[
                         i, col + "_freq_" + str(freqs[j]) + "_Hz_ws_" + str(window_size)
                     ] = real_ampl[j]
-                # And select the dominant frequency. We only consider the positive frequencies for now.
 
+                # Select the dominant frequency. We only consider the positive frequencies for now.
                 data_table.loc[i, col + "_max_freq"] = freqs[
                     np.argmax(real_ampl[0 : len(real_ampl)])
                 ]
                 data_table.loc[i, col + "_freq_weighted"] = float(
                     np.sum(freqs * real_ampl)
                 ) / np.sum(real_ampl)
+
                 PSD = np.divide(np.square(real_ampl), float(len(real_ampl)))
                 PSD_pdf = np.divide(PSD, np.sum(PSD))
                 data_table.loc[i, col + "_pse"] = -np.sum(np.log(PSD_pdf) * PSD_pdf)
 
         return data_table
+
+
+# Example usage:
+if __name__ == "__main__":
+    # Example data
+    data = {
+        "time": pd.date_range(start="1/1/2022", periods=100, freq="T"),
+        "value": np.random.randn(100),
+    }
+    df = pd.DataFrame(data)
+    df.set_index("time", inplace=True)
+
+    # Create an instance of FourierTransformation
+    fourier_transform = FourierTransformation()
+
+    # Abstract frequency data
+    result_df = fourier_transform.abstract_frequency(
+        df, ["value"], window_size=10, sampling_rate=1
+    )
+    print(result_df)
