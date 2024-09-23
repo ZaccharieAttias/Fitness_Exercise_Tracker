@@ -16,10 +16,11 @@ from sklearn.tree import DecisionTreeClassifier
 class ClassificationAlgorithms:
     """
     A collection of machine learning classification algorithms with methods for
-    performing feature selection and training models. This class provides implementations 
+    performing feature selection and training models. This class provides implementations
     for decision trees, neural networks, support vector machines, k-nearest neighbors,
     naive bayes, and random forest classifiers, among others.
     """
+
     def forward_selection(self, max_features, X_train, y_train):
         """
         Perform forward selection to identify the best features for classification.
@@ -54,7 +55,7 @@ class ClassificationAlgorithms:
 
                 # Determine the accuracy of a decision tree learner if we were to add
                 # the feature.
-                pred_y_train, _, _, _ = ca.decision_tree(
+                model, pred_y_train, _, _, _ = ca.decision_tree(
                     X_train[temp_selected_features],
                     y_train,
                     X_train[temp_selected_features],
@@ -154,7 +155,13 @@ class ClassificationAlgorithms:
         frame_prob_training_y = pd.DataFrame(pred_prob_training_y, columns=nn.classes_)
         frame_prob_test_y = pd.DataFrame(pred_prob_test_y, columns=nn.classes_)
 
-        return pred_training_y, pred_test_y, frame_prob_training_y, frame_prob_test_y
+        return (
+            nn,
+            pred_training_y,
+            pred_test_y,
+            frame_prob_training_y,
+            frame_prob_test_y,
+        )
 
     def support_vector_machine_with_kernel(
         self,
@@ -213,7 +220,13 @@ class ClassificationAlgorithms:
         frame_prob_training_y = pd.DataFrame(pred_prob_training_y, columns=svm.classes_)
         frame_prob_test_y = pd.DataFrame(pred_prob_test_y, columns=svm.classes_)
 
-        return pred_training_y, pred_test_y, frame_prob_training_y, frame_prob_test_y
+        return (
+            svm,
+            pred_training_y,
+            pred_test_y,
+            frame_prob_training_y,
+            frame_prob_test_y,
+        )
 
     def support_vector_machine_without_kernel(
         self,
@@ -274,7 +287,13 @@ class ClassificationAlgorithms:
         frame_prob_training_y = pd.DataFrame(pred_prob_training_y, columns=svm.classes_)
         frame_prob_test_y = pd.DataFrame(pred_prob_test_y, columns=svm.classes_)
 
-        return pred_training_y, pred_test_y, frame_prob_training_y, frame_prob_test_y
+        return (
+            svm,
+            pred_training_y,
+            pred_test_y,
+            frame_prob_training_y,
+            frame_prob_test_y,
+        )
 
     def k_nearest_neighbor(
         self,
@@ -326,7 +345,13 @@ class ClassificationAlgorithms:
         frame_prob_training_y = pd.DataFrame(pred_prob_training_y, columns=knn.classes_)
         frame_prob_test_y = pd.DataFrame(pred_prob_test_y, columns=knn.classes_)
 
-        return pred_training_y, pred_test_y, frame_prob_training_y, frame_prob_test_y
+        return (
+            knn,
+            pred_training_y,
+            pred_test_y,
+            frame_prob_training_y,
+            frame_prob_test_y,
+        )
 
     def decision_tree(
         self,
@@ -417,7 +442,13 @@ class ClassificationAlgorithms:
                 class_names=dtree.classes_,
             )
 
-        return pred_training_y, pred_test_y, frame_prob_training_y, frame_prob_test_y
+        return (
+            dtree,
+            pred_training_y,
+            pred_test_y,
+            frame_prob_training_y,
+            frame_prob_test_y,
+        )
 
     def naive_bayes(self, train_X, train_y, test_X):
         """
@@ -448,7 +479,13 @@ class ClassificationAlgorithms:
         frame_prob_training_y = pd.DataFrame(pred_prob_training_y, columns=nb.classes_)
         frame_prob_test_y = pd.DataFrame(pred_prob_test_y, columns=nb.classes_)
 
-        return pred_training_y, pred_test_y, frame_prob_training_y, frame_prob_test_y
+        return (
+            nb,
+            pred_training_y,
+            pred_test_y,
+            frame_prob_training_y,
+            frame_prob_test_y,
+        )
 
     def random_forest(
         self,
@@ -530,6 +567,7 @@ class ClassificationAlgorithms:
                 print(rf.feature_importances_[ordered_indices[i]])
 
         return (
+            rf,
             pred_training_y,
             pred_test_y,
             frame_prob_training_y,

@@ -14,11 +14,6 @@ OUTPUT_PATH = "../../data/interim/02_outliers_removed_chauvenet.pkl"
 OUTLIER_COLUMNS = ["acc_x", "acc_y", "acc_z", "gyr_x", "gyr_y", "gyr_z"]
 
 # --------------------------------------------------------------
-# Load data
-# --------------------------------------------------------------
-df = pd.read_pickle(DATA_PATH)
-
-# --------------------------------------------------------------
 # Plot settings
 # --------------------------------------------------------------
 plt.style.use("fivethirtyeight")
