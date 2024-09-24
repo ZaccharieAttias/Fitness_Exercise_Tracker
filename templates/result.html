@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Résultats</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Résultats des Prédictions</h1>
+    </header>
+    <div class="container">
+        <nav>
+            <a href="/">Accueil</a>
+            <a href="/upload">Télécharger</a>
+        </nav>
+        <table>
+            <thead>
+                <tr>
+                    {% for col in result.columns %}
+                    <th>{{ col }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in result.values %}
+                <tr>
+                    {% for cell in row %}
+                    <td>{{ cell }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <footer>
+        <p>&copy; 2023 Votre Nom ou Entreprise</p>
+    </footer>
+</body>
+</html>
